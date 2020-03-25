@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: ClientVpn Endpoint
+      Parameters:
+        - ClientCidrBlock
+        - DirectoryID
+        - ServerCertificate
+    - Label:
+        default: CloudWatch group
+      Parameters:
+        - CloudWatchGroup
+    - Label:
+        default: Subnet of Target Network
+      Parameters:
+        - TargetSubnet
+        - TargetSubnetCidr
+
+Parameters:
+    ClientCidrBlock:
+      Description: The IPv4 address range, in CIDR notation, from which to assign client IP addresses.
+      Type: String
+      Default: 20.0.0.0/20
+      MinLength: 9
+      MaxLength: 18
+      AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+      ConstraintDescription: Must be a valid CIDR range between /16 and /22
+
+    DirectoryID:
+      Description: Name of Active Directory ID you wish to use
+      Default: d-<values>
+      Type: String
+
+    ServerCertificate:
+      Description: Specify the ARN for the TLS certificate to be used by the server
+      Default: arn:aws:acm:<region>:<accountID>:certificate/<values>
+      Type: String
+      ConstraintDescription: It must be uploaded to Amazon Certificate Manager
+
+    CloudWatchGroup:
+      Description: Define a name that will create CloudWatch Log Group for logging
+      Type: String
+
+    TargetSubnet:
+      Description: Choose a target subnet which you want Client VPN associated with
+      Type: AWS::EC2::Subnet::Id
+
+    TargetSubnetCidr:
+      Description: Ingress Authorization CIDR for target network
+      Type: String
+      MinLength: 9
+      MaxLength: 18
+      AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+      Default: 0.0.0.0/0
+
+Resources:
+  CloudWatch:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref CloudWatchGroup
+      RetentionInDays: 365
+  ClientVPN:
+    Type: AWS::EC2::ClientVpnEndpoint
+    Properties:
+      Description: Client VPN connects end users to VPC
+      AuthenticationOptions:
+      - Type: "directory-service-authentication"
+        ActiveDirectory:
+          DirectoryId: !Ref DirectoryID
+      ClientCidrBlock: !Ref ClientCidrBlock
+      ConnectionLogOptions:
+        CloudwatchLogGroup: !Ref CloudWatch
+        Enabled: True
+      ServerCertificateArn: !Ref ServerCertificate
+
+
+  TargetVPC:
+    Type: AWS::EC2::ClientVpnTargetNetworkAssociation
+    Properties:
+      ClientVpnEndpointId: !Ref ClientVPN
+      SubnetId: !Ref TargetSubnet
+
+  AuthorizationRule:
+    Type: AWS::EC2::ClientVpnAuthorizationRule
+    Properties:
+      Description: Specifies Ingress Authorization Rule to add to Client endpoints
+      AuthorizeAllGroups: True
+      ClientVpnEndpointId: !Ref ClientVPN
+      TargetNetworkCidr: !Ref TargetSubnetCidr
